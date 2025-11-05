@@ -1,0 +1,493 @@
+<!--
+Fake Order Generator (HTML/CSS/JS)
+Open this file in VS Code and open in browser.
+Generates synthetic orders for: Canada, Portugal, United States, UK, Australia, France
+CSV columns: First name, Last name, Company, Country, Street, Apt/Unit, City, State/Region, ZIP/Postcode, Phone, gmail
+Gmail username always ends with exactly 3 digits (zero-padded if needed).
+Gmail username is first+last without a dot (e.g. johndoe042@gmail.com).
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fake Order Generator</title>
+  <style>
+    :root{--bg:#0f172a;--card:#0b1220;--accent:#06b6d4;--muted:#94a3b8;--glass:rgba(255,255,255,0.03)}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{background:linear-gradient(180deg,#071029 0%, #071a2f 100%);color:#e6eef6;padding:28px}
+    .container{max-width:1100px;margin:0 auto}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 30px rgba(2,6,23,0.6);}
+    .controls{display:grid;grid-template-columns:1fr 320px;gap:16px}
+
+    fieldset{border:1px dashed rgba(255, 255, 255, 0.04);padding:12px;border-radius:8px}
+    label{display:block;font-size:13px;margin-bottom:6px}
+    .countries{display:flex;flex-wrap:wrap;gap:8px}
+    .countries label{background:var(--glass);padding:8px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+    input[type=number], select, input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;background:linear-gradient(90deg,var(--accent),#7c3aed);color:#042023;border:none;cursor:pointer;font-weight:600}
+    .muted{color:var(--muted);font-size:13px}
+    .output{margin-top:16px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left}
+    th{background:rgba(255,255,255,0.02);font-weight:700}
+    .small{font-size:12px;color:var(--muted)}
+    footer{margin-top:12px;color:var(--muted);font-size:12px}
+
+    @media (max-width:800px){.controls{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Fake Order Generator</h1>
+        <p class="lead">Generate CSV test data for Canada, Portugal, US, UK, Australia, France — ready to open in VS Code.</p>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="controls">
+        <div>
+          <fieldset>
+            <legend class="small">Select countries</legend>
+            <div class="countries">
+              <label><input type="checkbox" value="Canada" checked> Canada</label>
+              <label><input type="checkbox" value="Portugal" checked> Portugal</label>
+              <label><input type="checkbox" value="United States" checked> United States</label>
+              <label><input type="checkbox" value="UK" checked> UK</label>
+              <label><input type="checkbox" value="Australia" checked> Australia</label>
+              <label><input type="checkbox" value="France" checked> France</label>
+            </div>
+          </fieldset>
+
+          <fieldset style="margin-top:12px">
+            <legend class="small">Count (per selected country)</legend>
+            <label>Records per country</label>
+            <input id="countPerCountry" type="number" min="1" max="5000" value="50">
+            <p class="small muted">Total rows = selected countries × records per country.</p>
+          </fieldset>
+
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+            <button id="generateBtn" class="btn">Generate & Download CSV</button>
+            <button id="previewBtn" class="btn" style="background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent);">Preview rows</button>
+          </div>
+        </div>
+
+        <div>
+          <fieldset>
+            <legend class="small">Options</legend>
+            <label>CSV filename</label>
+            <input id="filename" type="text" value="fake_orders.csv">
+            <label style="margin-top:8px">Seed (optional)</label>
+            <input id="seed" type="text" placeholder="leave empty for random">
+            <p class="small muted" style="margin-top:8px">Gmail usernames will always have exactly 3 digits at the end (e.g. johndoe042@gmail.com).</p>
+          </fieldset>
+
+          <fieldset style="margin-top:12px">
+            <legend class="small">Preview / Export</legend>
+            <p class="muted">After download open file with Excel/LibreOffice or in VS Code. Use preview to inspect a sample in the table below.</p>
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="output" id="outputArea"></div>
+      <footer>Made for testing & development — do not use for impersonation or fraudulent activity.</footer>
+    </div>
+  </div>
+
+  <script>
+    // Simple deterministic random with seed support (Mulberry32)
+    function mulberry32(a) {
+      return function() {
+        var t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ t >>> 15, t | 1);
+        t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      }
+    }
+
+    function pick(rand, arr){ return arr[Math.floor(rand()*arr.length)]; }
+
+    // Small datasets for each country (add more entries if you want)
+    const DATA = {
+      "Canada": {
+        first: ["Liam","Ethan","Noah","Olivia","Emma","Ava","Sophia","Lucas","Mason","Charlotte",
+"Amir","Fatima","Benjamin","Jacob","Alexander","Ella","Isabella","Amelia","Logan","Jackson",
+"Jacob","Levi","Sebastian","Gabriel","Sofia","Avery","Harper","Ethan","Lily","Chloe",
+"Mia","Aria","James","William","Henry","Evelyn","Victoria","Grace","Samuel","Daniel",
+"Matthew","Nathan","Lily","Scarlett","Luna","Hazel","Aurora","Leo","Caleb","Isaac",
+"Owen","Jack","Eli","Carter","Wyatt","Julian","Sofia","Madeline","Alice","Stella",
+"Nova","Adeline","Eleanor","Hannah","Zoey","Camila","Penelope","Riley","Nora","Elizabeth",
+"Aiden","Connor","Ryan","Dylan","Thomas","Charles","Lucas","Ethan","Liam","Oliver",
+"Emma","Charlotte","Ava","Amelia","Mason","Logan","Noah","Oliver","Lucas","Elijah",
+"Jack","Alexander","Henry","Jacob","Michael","Benjamin","Sebastian","David","Samuel","Leo"
+],
+        last: ["Smith","Brown","Tremblay","Johnson","Lee","Wilson","Nguyen","MacDonald","Roy","Bouchard",
+"Khan","Hossain","Martin","Clark","Walker","Young","Allen","Scott","Adams","Baker",
+"Campbell","Mitchell","Carter","Robinson","Harris","Lewis","King","Wright","Hill","Green",
+"Evans","Nelson","Hall","Moore","Thompson","White","Turner","Phillips","Parker","Collins",
+"Edwards","Murphy","Cook","Peterson","Kelly","Sanders","Bell","Gray","Brooks","James",
+"Watson","Wood","Hughes","Price","Powell","Bennett","Ross","Reid","Ward","Murray",
+"Marshall","Lawrence","Graham","Gonzalez","Freeman","Webb","Hunter","Knight","Berry","Gibson",
+"Ford","Hamilton","Foster","Grant","Watts","Cole","Harrison","Chapman","Holmes","Jenkins",
+"Pearce","Lane","Chapman","Rice","George","Owen","Alexander","Hunt","Palmer","Cunningham",
+"Riley","Fox","Wallace","Holman","Mason","Reynolds","Payne","Fleming","Douglas","Holland"
+],
+        companies: ["Maple Foods","Northern Logistics","TrueNorth Inc","BayTech","Aurora Solutions","Maple Media"],
+        cities: ["Toronto","Montreal","Vancouver","Calgary","Ottawa","Halifax"],
+        regions: ["Ontario","Quebec","British Columbia","Alberta","Nova Scotia"],
+        streets: ["King St","Queen St","Bay St","Yonge St","Bloor St","Main St"]
+      },
+      "Portugal": {
+        first: ["João","Sofia","Miguel","Beatriz","Martim","Inês","Pedro","Mariana","Rui","Ana",
+"Tiago","Catarina","Bruno","Teresa","André","Leonor","Ricardo","Mafalda","Francisco","Luísa",
+"Vasco","Clara","José","Marta","Gabriel","Filipa","Paulo","Rafaela","Hugo","Daniela",
+"Gonçalo","Sara","Daniel","Vera","Nuno","Raquel","António","Bárbara","Marco","Rita",
+"Manuel","Carolina","Óscar","Lúcia","Fábio","Sílvia","Lourenço","Cátia","Elias","Patrícia",
+"Rodrigo","Joana","Alexandre","Lília","Sérgio","Madalena","Valentim","Constança","Afonso","Ema",
+"Samuel","Noémia","Guilherme","Sónia","Artur","Helena","Rómulo","Mónica","Filipe","Bianca",
+"Ruben","Célia","Mário","Adriana","Ivo","Gisela","Duarte","Rute","Orlando","Aurora",
+"Salvador","Lara","Ilda","Rafael","Lina","Gaspar","Eunice","Nelson","Adão","Ester",
+"Amélia","Vítor","Emanuel","Glória","Baltasar","Hélder","Olívia","Mauro","Gil","Lurdes"
+],
+        last: ["Silva","Santos","Pereira","Ferreira","Costa","Oliveira","Pinto","Gonçalves",
+"Rodrigues","Martins","Carvalho","Alves","Gomes","Mendes","Ribeiro","Soares","Correia","Lopes",
+"Monteiro","Nunes","Teixeira","Fonseca","Cabral","Cardoso","Magalhães","Barbosa","Amaral","Dias",
+"Machado","Viana","Coelho","Faria","Castro","Freitas","Moura","Cavalcante","Pacheco","Tavares",
+"Ramos","Siqueira","Azevedo","Vieira","Melo","Rezende","Queiroz","Cunha","Silveira","Rocha",
+"Lima","Assunção","Batista","Cordeiro","Figueiredo","Guedes","Lacerda","Monte","Paiva","Ramos",
+"Ramos","Serra","Torres","Valente","Veloso","Viana","Vicente","Campos","Barros","Carneiro",
+"Cardoso","Duarte","Esteves","Furtado","Leal","Lopes","Martins","Nascimento","Neves","Pereira",
+"Pires","Prado","Queiroz","Ribeiro","Rodrigues","Sampaio","Santos","Silva","Sousa","Teixeira",
+"Vasconcelos","Vieira","Vilela","Ferraz","Freire","Gonçalves","Machado","Marques","Medeiros","Moreira"
+],
+        companies: ["LusaTech Lda","Lisboa Commerce","Porto Traders","Atlântico SA","Norte Solutions"],
+        cities: ["Lisboa","Porto","Coimbra","Faro","Braga"],
+        regions: ["Lisboa","Porto","Algarve","Coimbra"],
+        streets: ["Rua do Comércio","Avenida da Liberdade","Rua de Santa Catarina","Rua Central"]
+      },
+      "United States": {
+        first: ["James","John","Robert","Michael","William","Mary","Patricia","Jennifer","Linda","Barbara",
+"Elizabeth","David","Richard","Joseph","Thomas","Charles","Christopher","Daniel","Matthew","Anthony",
+"Mark","Donald","Steven","Paul","Andrew","Joshua","Kenneth","Kevin","Brian","George","Edward",
+"Ronald","Timothy","Jason","Jeffrey","Ryan","Jacob","Gary","Nicholas","Eric","Jonathan",
+"Stephen","Larry","Justin","Scott","Brandon","Benjamin","Samuel","Frank","Gregory","Raymond",
+"Patrick","Alexander","Jack","Dennis","Jerry","Tyler","Aaron","Jose","Henry","Douglas",
+"Peter","Adam","Nathan","Zachary","Walter","Kyle","Harold","Carl","Jeremy","Keith",
+"Roger","Gerald","Ethan","Arthur","Terry","Christian","Sean","Lawrence","Austin","Joe",
+"Noah","Jesse","Albert","Bryan","Billy","Bruce","Willie","Jordan","Dylan","Alan",
+"Ralph","Gabriel","Roy","Juan","Wayne","Eugene","Logan","Randy","Louis","Russell"
+],
+        last: ["Smith","Johnson","Williams","Brown","Jones","Miller","Davis","Garcia","Rodriguez","Wilson",
+"Martinez","Anderson","Taylor","Thomas","Hernandez","Moore","Martin","Jackson","Thompson","White",
+"Lopez","Lee","Gonzalez","Harris","Clark","Lewis","Robinson","Walker","Perez","Hall",
+"Young","Allen","Sanchez","Wright","King","Scott","Green","Baker","Adams","Nelson",
+"Hill","Ramirez","Campbell","Mitchell","Roberts","Carter","Phillips","Evans","Turner","Torres",
+"Parker","Collins","Edwards","Stewart","Flores","Morris","Nguyen","Murphy","Rivera","Cook",
+"Rogers","Morgan","Peterson","Cooper","Reed","Bailey","Bell","Gomez","Kelly","Howard",
+"Ward","Cox","Diaz","Richardson","Wood","Watson","Brooks","Bennett","Gray","James",
+"Reyes","Cruz","Hughes","Price","Myers","Long","Foster","Sanders","Ross","Morales",
+"Powell","Sullivan","Russell","Ortiz","Jenkins","Gutierrez","Perry","Butler","Barnes","Fisher"
+],
+        companies: ["Acme Solutions","American Logistics","Sunrise Co","Liberty Traders","Pioneer LLC"],
+        cities: ["New York","Los Angeles","Chicago","Houston","Phoenix","Philadelphia"],
+        regions: ["New York","California","Illinois","Texas","Arizona","Pennsylvania"],
+        streets: ["Main St","Oak Ave","Maple Ave","Elm St","2nd St","Pine St"]
+      },
+      "UK": {
+        first: ["Oliver","George","Harry","Jack","Jacob","Olivia","Amelia","Isla","Ava","William",
+"Thomas","Leo","Charlie","Alfie","James","Henry","Mia","Ella","Sophia","Isabella",
+"Joshua","Ethan","Samuel","Alexander","Benjamin","Emily","Grace","Sophie","Lily","Chloe",
+"Daniel","Michael","Harrison","Lucas","Finley","Archie","Molly","Ruby","Jessica","Hannah",
+"Logan","Jake","Ryan","Nathan","Dylan","Leo","Scarlett","Amelie","Alice","Freya",
+"Zoe","Lola","Harvey","Elliot","Theo","Isaac","Sebastian","Mason","Toby","Joseph",
+"David","Oscar","Samuel","Eleanor","Imogen","Florence","Eliza","Poppy","Evie","Maisie",
+"George","Henry","William","Arthur","Frederick","Alastair","Edward","Max","Liam","Noah",
+"Olivia","Amelia","Isla","Ava","Mia","Ella","Sophia","Emily","Grace","Sophie",
+"Lily","Chloe","Ruby","Alice","Evie","Poppy","Isabelle","Maisie","Imogen","Florence"
+],
+        last: ["Smith","Jones","Taylor","Brown","Williams","Wilson","Davies","Evans","Thomas","Roberts",
+"Johnson","Lewis","Walker","Robinson","Wood","Thompson","White","Watson","Jackson","Wright",
+"Green","Harris","Cooper","King","Lee","Martin","Clark","James","Hughes","Edwards",
+"Hall","Morris","Moore","Turner","Hill","Scott","Young","Allen","Carter","Mitchell",
+"Adams","Baker","Campbell","Collins","Cook","Evans","Foster","Gray","Griffiths","Harrison",
+"Kelly","Knight","Lawrence","Mason","Morgan","Murphy","Parker","Patel","Pearce","Powell",
+"Price","Reid","Richards","Robinson","Rose","Russell","Shaw","Simpson","Stewart","Stone",
+"Taylor","Thomas","Thompson","Walker","Ward","Watson","Webb","White","Williams","Wood",
+"Wright","Young","Hill","Cox","Hunt","Cole","Henderson","Grant","Bell","Armstrong",
+"Douglas","Fletcher","Chapman","Cunningham","Hughes","Marshall","Payne","Bennett","Reynolds","Fox"
+],
+        companies: ["London Logistics","Thames Trading","Britannia Goods","Crown Ltd"],
+        cities: ["London","Birmingham","Manchester","Leeds","Glasgow"],
+        regions: ["Greater London","West Midlands","Greater Manchester","West Yorkshire"],
+        streets: ["Baker St","High St","Church Rd","Station Rd","King's Road"]
+      },
+      "Australia": {
+        first: ["Oliver","Noah","William","Jack","Thomas","Charlotte","Amelia","Olivia","Ava","Isla",
+"Henry","Leo","Lucas","James","Ella","Mia","Harper","Grace","Isabella","Ethan",
+"George","Harrison","Archer","Liam","Sophie","Evie","Emily","Ruby","Zoe","Oscar",
+"Elijah","Archie","Hudson","Logan","Mason","Hunter","Sebastian","Samuel","Benjamin","Levi",
+"Scarlett","Matilda","Ivy","Hazel","Poppy","Luna","Willow","Sienna","Chloe","Abigail",
+"Jacob","Riley","Harvey","Nate","Finn","Theo","Alex","Charlie","Joseph","Carter",
+"Aiden","Hugo","Blake","Flynn","Spencer","Jaxon","Eli","Patrick","Connor","Isaac",
+"Georgia","Lara","Audrey","Elise","Violet","Madeline","Lucy","Eleanor","Aria","Peyton",
+"Summer","Mackenzie","Layla","Eden","Amber","Sophie","Phoebe","Clara","Annabelle","Lola",
+"Bonnie","Savannah","Thea","Daisy","Mila","Mae","Penelope","Aurora","Amara","Skye"
+],
+        last: ["Smith","Jones","Taylor","Brown","Williams","Wilson","Johnson","White","Martin","Anderson",
+"Thompson","Nguyen","Thomas","Walker","Harris","Lewis","Robinson","Wood","Jackson","Clarke",
+"James","Hughes","Edwards","Green","Hall","Allen","Young","King","Scott","Evans",
+"Adams","Baker","Hill","Phillips","Moore","Turner","Parker","Collins","Campbell","Cook",
+"Morris","Ward","Murphy","Miller","Cox","Stewart","Kelly","Watson","Bailey","Cooper",
+"Rogers","Gray","Price","Reid","Morgan","Bell","Bennett","Russell","Lee","Foster",
+"Howard","Cole","Watts","Jenkins","Gibson","Palmer","Alexander","Graham","Stone","Ford",
+"Harrison","Lawrence","Grant","Pearson","Murray","Knight","Simpson","Matthews","West","Barnes",
+"Holland","Fox","Bishop","Duncan","Lowe","Wallace","Butler","Fuller","Webb","Moss",
+"Carroll","Hayes","Blake","Chambers","Warren","Reynolds","Barrett","Holland","Long","Wells"
+],
+        companies: ["Southern Exporters","Aussie Goods Pty","DownUnder Co","Koala Logistics"],
+        cities: ["Sydney","Melbourne","Brisbane","Perth","Adelaide"],
+        regions: ["New South Wales","Victoria","Queensland","Western Australia"],
+        streets: ["King St","George St","Queen St","Elizabeth St"]
+      },
+      "France": {
+        first: ["Lucas","Louis","Gabriel","Jules","Hugo","Emma","Louise","Chloé","Manon","Léo",
+"Arthur","Nathan","Lina","Léa","Ethan","Camille","Noah","Zoé","Paul","Jade",
+"Raphaël","Alice","Tom","Sarah","Adam","Eva","Enzo","Juliette","Sacha","Anna",
+"Victor","Nina","Liam","Elena","Mathis","Clara","Noé","Margaux","Théo","Luna",
+"Alexandre","Elodie","Robin","Ambre","Baptiste","Mila","Antoine","Agathe","Martin","Maëlys",
+"Léna","Gabrielle","Maxime","Romane","Bastien","Lou","Samuel","Inès","Oscar","Rose",
+"Romain","Elsa","Simon","Lucie","Benjamin","Alicia","Eliott","Carla","Valentin","Maeva",
+"Thomas","Aurélie","Héloïse","Tristan","Amandine","Kylian","Capucine","Guillaume","Louna","Alexis",
+"Maël","Iris","Florian","Célia","Corentin","Elisa","Matéo","Adèle","Charles","Mélissa",
+"Nathaniel","Camille","Mathilde","Soline","Loïc","Amélie","Clément","Océane","Adrien","Elina",
+"Damien","Maïa","Timéo","Anouk","Nicolas","Eden","Axel","Léonie","Thibault","Sophie",
+"Quentin","Ava","Jérôme","Roxane","Lionel","Noémie","Julien","Daphné","Vincent","Eléonore",
+"Steven","Cassandra","Pierre","Livia","Laurent","Myriam","Gaël","Anaïs","Patrick","Ophélie",
+"Tony","Lucile","Arnaud","Pauline","Kevin","Estelle","Rudy","Clémence","Dylan","Marine",
+"Cédric","Charlène","Grégory","Amine","Pascal","Emilie","Johan","Morgane","Christophe","Mélanie",
+"Sebastien","Justine","Patrice","Auriane","Fabien","Coralie","Yoann","Kelly","Bruno","Sabrina",
+"François","Aurelia","Benoît","Laurine","Sylvain","Maud","Jeremie","Hana","Damian","Elora",
+"Claude","Lilou","Didier","Cindy","Alban","Thais","Remi","Berenice","Alex","Cassandre",
+"Jean","Laurie","Eric","Mae","Gérald","Naomi","Luc","Nora","Yanis","Alizée"
+],
+        last: ["Martin","Bernard","Dubois","Thomas","Robert","Petit","Richard","Durand","Leroy","Moreau",
+"Simon","Laurent","Lefebvre","Michel","Garcia","David","Bertrand","Roux","Vincent","Fournier",
+"Morel","Girard","Andre","Lefevre","Mercier","Dupont","Lambert","Bonnet","Francois","Martinez",
+"Legrand","Garnier","Faure","Rousseau","Blanc","Guerin","Muller","Henry","Roussel","Nicolas",
+"Perrin","Morin","Mathieu","Clement","Gauthier","Dumont","Lopez","Fontaine","Chevalier","Robin",
+"Masson","Sanchez","Gerard","Nguyen","Boyer","Denis","Lemaire","Duval","Joly","Gautier",
+"Roger","Roche","Roy","Noel","Meyer","Lucas","Meunier","Jean","Perez","Marchand",
+"Dufour","Blanchard","Marie","Barbier","Brun","Dumas","Brunet","Schmitt","Lemoine","Colin",
+"Fernandez","Pierre","Renard","Arnaud","Rolland","Caron","Aubert","Giraud","Leclerc","Vidal",
+"Bourgeois","Renaud","Leroux","Picard","Gaillard","Philippe","Leclercq","Lacroix","Fabre","Dupuis",
+"Olivier","Rodriguez","Da Silva","Hubert","Louis","Charles","Guillot","Riviere","Le Gall","Guichard",
+"Blot","Perrot","Besson","Mallet","Delorme","Laporte","Pasquier","Ribeiro","Pires","Navarro",
+"Lecomte","Leger","Millet","Descamps","Poulain","Collin","Le Roux","Julien","Baron","Lejeune",
+"Bertin","Pons","David","Texier","Lamy","Jourdan","Morvan","Vallet","Rodrigues","Grondin",
+"Peltier","Langlois","Jacquet","Germain","Leray","Bonneau","Leclerc","Camus","Dupre","Hoarau",
+"Rault","Begue","Lebon","Lombard","Hebert","Besnard","Guillaume","Leblond","Royer","Bailly",
+"Boucher","Delattre","Barre","Pichon","Devaux","Legros","Marin","Verdier","Delarue","Adam",
+"Carre","Chauvet","Lesage","Benoist","Lebreton","Seguin","Germain","Marion","Lenoir","Perret"
+],
+        companies: ["LeBon SARL","Paris Commerce","Étoile SA","Occitanie Traders"],
+        cities: ["Paris","Lyon","Marseille","Toulouse","Nice"],
+        regions: ["Île-de-France","Auvergne-Rhône-Alpes","Provence-Alpes-Côte d'Azur"],
+        streets: ["Rue Victor Hugo","Avenue de la République","Rue de la Paix","Boulevard Saint-Germain"]
+      }
+    };
+
+    // helpers to format postcodes & phones (simple realistic-ish patterns)
+    function postcodeFor(country, rand){
+      if(country==='Canada'){
+        // Canadian postal code pattern: A1A 1A1 (we'll produce A1A 1A1 style)
+        const letters = 'ABCEGHJKLMNPRSTVXY';
+        const d = () => Math.floor(rand()*10);
+        const L = () => letters[Math.floor(rand()*letters.length)];
+        return `${L()}${d()}${L()} ${d()}${L()}${d()}`;
+      }
+      if(country==='United States'){
+        return String(10000 + Math.floor(rand()*89999));
+      }
+      if(country==='UK'){
+        const d = () => Math.floor(rand()*10);
+        return `${pick(rand, ['SW','NW','SE','W','E','N','S','EC','WC'])}${d()} ${d()}${pick(rand, ['AA','AB','AE','XE','BD','TY','AZ'])}`;
+      }
+      if(country==='Australia'){
+        return String(1000 + Math.floor(rand()*8000));
+      }
+      if(country==='France'){
+        return String(10000 + Math.floor(rand()*89999));
+      }
+      if(country==='Portugal'){
+        return `${1000 + Math.floor(rand()*8000)}-${100 + Math.floor(rand()*900)}`;
+      }
+      return '';
+    }
+
+    function phoneFor(country, rand){
+      if(country==='Canada' || country==='United States'){
+        const area = 200 + Math.floor(rand()*700);
+        const mid = 200 + Math.floor(rand()*700);
+        const last = 1000 + Math.floor(rand()*9000);
+        return `(${area}) ${mid}-${last}`;
+      }
+      if(country==='UK'){
+        return `0${Math.floor(700 + rand()*300)} ${1000 + Math.floor(rand()*9000)}`;
+      }
+      if(country==='Australia'){
+        return `04${Math.floor(1000 + rand()*8000)} ${Math.floor(100 + rand()*900)}`;
+      }
+      if(country==='France'){
+        return `0${Math.floor(1 + rand()*9)} ${Math.floor(10 + rand()*90)} ${Math.floor(10 + rand()*90)} ${Math.floor(10 + rand()*90)}`;
+      }
+      if(country==='Portugal'){
+        return `${9}${Math.floor(10 + rand()*80)} ${100 + Math.floor(rand()*900)} ${100 + Math.floor(rand()*900)}`;
+      }
+      return '';
+    }
+
+    function makeStreet(rand, countryData){
+      const num = 1 + Math.floor(rand()*999);
+      const street = pick(rand, countryData.streets);
+      return `${num} ${street}`;
+    }
+
+    function makeApt(rand){
+      const r = Math.floor(rand()*5);
+      if(r===0) return '';
+      if(r===1) return `Apt ${1 + Math.floor(rand()*999)}`;
+      if(r===2) return `Unit ${1 + Math.floor(rand()*999)}`;
+      if(r===3) return `Suite ${1 + Math.floor(rand()*999)}`;
+      return `#${1 + Math.floor(rand()*999)}`;
+    }
+
+    function cleanUsername(s){
+      // produce a compact username: lowercase, no dots or spaces, only letters+digits
+      return s.toLowerCase().replace(/\s+/g,'').replace(/[^a-z0-9]/g,'') || 'user';
+    }
+
+    function makeGmail(rand, first, last){
+      // join first and last without a dot between them, then append exactly 3 digits
+      const base = cleanUsername(`${first}${last}`);
+      const num = Math.floor(rand()*1000); // 0-999
+      const digits = String(num).padStart(3,'0');
+      return `${base}${digits}@gmail.com`;
+    }
+
+    function generateRows(selectedCountries, perCountry, seed){
+      const rows = [];
+      const rng = seed ? mulberry32(seed) : Math.random;
+      const randFunc = seed ? rng : Math.random;
+
+      for(const country of selectedCountries){
+        const countryData = DATA[country];
+        for(let i=0;i<perCountry;i++){
+          const first = pick(randFunc, countryData.first);
+          const last = pick(randFunc, countryData.last);
+          const company = pick(randFunc, countryData.companies);
+          const street = makeStreet(randFunc, countryData);
+          const apt = makeApt(randFunc);
+          const city = pick(randFunc, countryData.cities);
+          const region = pick(randFunc, countryData.regions);
+          const postcode = postcodeFor(country, randFunc);
+          const phone = phoneFor(country, randFunc);
+          const gmail = makeGmail(randFunc, first, last);
+
+          rows.push({
+            "First name": first,
+            "Last name": last,
+            "Country": country,
+            "Street": street,
+            "City": city,
+            "ZIP/Postcode": postcode,
+            "Phone": phone,
+            "gmail": gmail
+          });
+        }
+      }
+      return rows;
+    }
+
+    function rowsToCSV(rows){
+      const cols = ["First name","Last name","Company","Country","Street","Apt/Unit","City","State/Region","ZIP/Postcode","Phone","gmail"];
+      const esc = v => `"${String(v).replace(/"/g,'""')}"`;
+      const lines = [cols.map(esc).join(',')];
+      for(const r of rows){
+        lines.push(cols.map(c=>esc(r[c]||'')).join(','));
+      }
+      return lines.join('\n');
+    }
+
+    function downloadCSV(text, filename){
+      const blob = new Blob([text],{type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 10000);
+    }
+
+    // UI wiring
+    document.getElementById('generateBtn').addEventListener('click', ()=>{
+      const checked = Array.from(document.querySelectorAll('.countries input[type=checkbox]:checked')).map(i=>i.value);
+      if(checked.length===0){ alert('Select at least one country'); return; }
+      const perCountry = parseInt(document.getElementById('countPerCountry').value)||1;
+      const seedInput = document.getElementById('seed').value.trim();
+      const seed = seedInput? Number(seedInput) : null;
+      const rows = generateRows(checked, perCountry, seed);
+      const csv = rowsToCSV(rows);
+      const filename = document.getElementById('filename').value || 'fake_orders.csv';
+      downloadCSV(csv, filename);
+    });
+
+    document.getElementById('previewBtn').addEventListener('click', ()=>{
+      const checked = Array.from(document.querySelectorAll('.countries input[type=checkbox]:checked')).map(i=>i.value);
+      if(checked.length===0){ alert('Select at least one country'); return; }
+      const perCountry = parseInt(document.getElementById('countPerCountry').value)||1;
+      const seedInput = document.getElementById('seed').value.trim();
+      const seed = seedInput? Number(seedInput) : Math.floor(Math.random()*1000000);
+      const rows = generateRows(checked, Math.min(5, perCountry), seed);
+      showPreview(rows, seed);
+    });
+
+    function showPreview(rows, seed){
+      const out = document.getElementById('outputArea');
+      out.innerHTML = '';
+      const info = document.createElement('div');
+      info.className = 'small muted';
+      info.textContent = `Preview — seed: ${seed} — showing ${rows.length} rows`;
+      out.appendChild(info);
+
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const cols = ["First name","Last name","Company","Country","Street","Apt/Unit","City","State/Region","ZIP/Postcode","Phone","gmail"];
+      const tr = document.createElement('tr');
+      for(const c of cols){ const th = document.createElement('th'); th.textContent = c; tr.appendChild(th); }
+      thead.appendChild(tr); table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      for(const r of rows){
+        const tr = document.createElement('tr');
+        for(const c of cols){ const td = document.createElement('td'); td.textContent = r[c]||''; tr.appendChild(td); }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      out.appendChild(table);
+    }
+
+    // initial small preview
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('previewBtn').click();
+    });
+  </script>
+</body>
+</html>
+
+
